@@ -95,7 +95,7 @@ export async function processRoads(bounds: L.LatLngBounds) {
   }
 }
 
-export async function fetchRoadsAndExportSVG(bounds: L.LatLngBounds, roads: any[] = []) {
+export async function fetchRoadsAndExportSVG(bounds: L.LatLngBounds, roads: any[] = [], standaloneLabels: any[] = []) {
   try {
     // Create SVG
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -238,6 +238,25 @@ export async function fetchRoadsAndExportSVG(bounds: L.LatLngBounds, roads: any[
       text.setAttribute('transform', `rotate(${angle}, ${labelPos[0]}, ${labelPos[1]})`);
       svg.appendChild(text);
     });
+
+    // Render standalone text labels
+    if (standaloneLabels && standaloneLabels.length > 0) {
+      standaloneLabels.forEach(label => {
+        if (!label.visible) return;
+        
+        // Create and add the text element
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.textContent = label.text;
+        text.setAttribute('x', label.position[0].toString());
+        text.setAttribute('y', label.position[1].toString());
+        text.setAttribute('font-size', (label.fontSize || 12).toString());
+        text.setAttribute('fill', 'black');
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('dominant-baseline', 'middle');
+        text.setAttribute('transform', `rotate(${label.angle || 0}, ${label.position[0]}, ${label.position[1]})`);
+        svg.appendChild(text);
+      });
+    }
 
     // Download SVG
     const serializer = new XMLSerializer();

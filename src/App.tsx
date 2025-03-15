@@ -1,14 +1,24 @@
 import React, { useState, useRef } from 'react';
 import { MapContainer, TileLayer } from 'react-leaflet';
+import L from 'leaflet';
+import { fetchRoadsAndExportSVG, processRoads } from './utils/mapUtils';
 import { Search, Download } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
-import { fetchRoadsAndExportSVG, processRoads } from './utils/mapUtils';
 import { RoadEditor } from './components/RoadEditor';
 
 // Fix for Leaflet icons
-import L from 'leaflet';
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+
+// Define type for standalone labels
+interface StandaloneLabel {
+  id: string;
+  text: string;
+  position: [number, number];
+  fontSize?: number;
+  angle?: number;
+  visible: boolean;
+}
 
 let DefaultIcon = L.icon({
   iconUrl: icon,
@@ -49,8 +59,8 @@ function App() {
     }
   };
 
-  const handleFinalExport = (selectedRoads: any[]) => {
-    fetchRoadsAndExportSVG(mapRef.current!.getBounds(), selectedRoads);
+  const handleFinalExport = (selectedRoads: any[], standaloneLabels: StandaloneLabel[] = []) => {
+    fetchRoadsAndExportSVG(mapRef.current!.getBounds(), selectedRoads, standaloneLabels);
     setShowEditor(false);
   };
 

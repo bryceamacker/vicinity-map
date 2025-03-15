@@ -1,5 +1,5 @@
 import React, { useState, useRef, MouseEvent, useEffect } from 'react';
-import { X, Download, Undo, ZoomIn, ZoomOut, RotateCcw, Move, MousePointer, RotateCw, Type, ChevronUp, ChevronDown } from 'lucide-react';
+import { X, Download, Undo, ZoomIn, ZoomOut, RotateCcw, Move, MousePointer, RotateCw, Type, ChevronUp, ChevronDown, PlusCircle } from 'lucide-react';
 
 interface Road {
   id: string;
@@ -14,6 +14,16 @@ interface Road {
   customAngle?: number; // Custom rotation angle (overrides the automatic angle)
 }
 
+// Standalone text label interface
+interface StandaloneLabel {
+  id: string;
+  text: string;
+  position: [number, number];
+  fontSize?: number;
+  angle?: number;
+  visible: boolean;
+}
+
 // Selection rectangle type
 interface SelectionRect {
   startX: number;
@@ -25,13 +35,13 @@ interface SelectionRect {
 // Selection mode type
 type SelectionMode = 'select' | 'deselect' | 'none';
 
-// Editor mode type - add label edit mode
-type EditorMode = 'selection' | 'labelEdit';
+// Editor mode type - add text mode
+type EditorMode = 'selection' | 'labelEdit' | 'textAdd';
 
 interface RoadEditorProps {
   roads: Road[];
   onClose: () => void;
-  onExport: (roads: Road[]) => void;
+  onExport: (roads: Road[], standaloneLabels?: StandaloneLabel[]) => void;
 }
 
 export function RoadEditor({ roads: initialRoads, onClose, onExport }: RoadEditorProps) {
@@ -47,6 +57,12 @@ export function RoadEditor({ roads: initialRoads, onClose, onExport }: RoadEdito
   const [roads, setRoads] = useState(processedInitialRoads);
   const [history, setHistory] = useState<Road[][]>([processedInitialRoads]);
   const [historyIndex, setHistoryIndex] = useState(0);
+  
+  // Add state for standalone labels
+  const [standaloneLabels, setStandaloneLabels] = useState<StandaloneLabel[]>([]);
+  const [labelHistory, setLabelHistory] = useState<StandaloneLabel[][]>([[]]);
+  const [selectedStandaloneLabel, setSelectedStandaloneLabel] = useState<string | null>(null);
+  const [newLabelText, setNewLabelText] = useState('New Label');
   
   // Selection mode and rectangle state
   const [selectionMode, setSelectionMode] = useState<SelectionMode>('none');
@@ -223,16 +239,27 @@ export function RoadEditor({ roads: initialRoads, onClose, onExport }: RoadEdito
     setHistory([...history.slice(0, historyIndex + 1), [...newRoads]]);
     setHistoryIndex(historyIndex + 1);
   };
+  
+  // Save standalone labels to history
+  const saveLabelToHistory = (newLabels: StandaloneLabel[]) => {
+    setLabelHistory([...labelHistory.slice(0, historyIndex + 1), [...newLabels]]);
+    // We keep the historyIndex in sync for both roads and labels
+  };
 
   const undo = () => {
     if (historyIndex > 0) {
       setHistoryIndex(historyIndex - 1);
       setRoads(history[historyIndex - 1] as any);
+      
+      // Also restore labels from history if available
+      if (labelHistory[historyIndex - 1]) {
+        setStandaloneLabels(labelHistory[historyIndex - 1]);
+      }
     }
   };
 
   const handleExport = () => {
-    onExport(roads.filter(road => road.visible));
+    onExport(roads.filter(road => road.visible), standaloneLabels.filter(label => label.visible));
   };
 
   // Mouse event handlers for rectangle selection
@@ -247,6 +274,11 @@ export function RoadEditor({ roads: initialRoads, onClose, onExport }: RoadEdito
   const handleMouseMove = (event: MouseEvent) => {
     if (draggedLabelId) {
       handleLabelDrag(event);
+      return;
+    }
+    
+    if (draggedStandaloneLabel) {
+      handleStandaloneLabelDrag(event);
       return;
     }
     
@@ -266,6 +298,11 @@ export function RoadEditor({ roads: initialRoads, onClose, onExport }: RoadEdito
   const handleMouseUp = () => {
     if (draggedLabelId) {
       handleLabelDragEnd();
+      return;
+    }
+    
+    if (draggedStandaloneLabel) {
+      handleStandaloneLabelDragEnd();
       return;
     }
     
@@ -342,13 +379,19 @@ export function RoadEditor({ roads: initialRoads, onClose, onExport }: RoadEdito
       setEditorMode('selection');
       setSelectionMode('none');
       setSelectedLabelId(null); // Clear selected label when exiting label edit mode
+      setSelectedStandaloneLabel(null); // Clear selected standalone label
     } else {
       setEditorMode(mode);
-      // Reset selection mode when switching to label edit
+      // Reset selection mode when switching mode
       if (mode === 'labelEdit') {
         setSelectionMode('none');
+        setSelectedStandaloneLabel(null);
+      } else if (mode === 'textAdd') {
+        setSelectionMode('none');
+        setSelectedLabelId(null);
       } else {
-        setSelectedLabelId(null); // Clear selected label when switching to selection mode
+        setSelectedLabelId(null);
+        setSelectedStandaloneLabel(null);
       }
     }
   };
@@ -456,10 +499,17 @@ export function RoadEditor({ roads: initialRoads, onClose, onExport }: RoadEdito
     }, 100);
   };
   
-  // Handle background click to deselect label
+  // Handle background click to add text label in textAdd mode or deselect label
   const handleBackgroundClick = (event: React.MouseEvent) => {
     // If we're ignoring background clicks, do nothing
     if (ignoreBackgroundClick) return;
+    
+    // If in text add mode, add a new standalone label where the user clicked
+    if (editorMode === 'textAdd') {
+      const [x, y] = getSvgCoordinates(event as unknown as MouseEvent);
+      addStandaloneLabel([x, y]);
+      return;
+    }
     
     // Only deselect if we're in label edit mode, not in the middle of a drag operation,
     // and not clicking a control button (the event target shouldn't be a control element)
@@ -471,6 +521,14 @@ export function RoadEditor({ roads: initialRoads, onClose, onExport }: RoadEdito
       // This prevents deselection when clicking on control buttons
       if (target.tagName === 'svg' || (target.tagName === 'rect' && !target.getAttribute('rx'))) {
         setSelectedLabelId(null);
+      }
+    }
+    
+    // Also handle deselection of standalone labels
+    if (editorMode === 'labelEdit' && selectedStandaloneLabel && !draggedLabelId) {
+      const target = event.target as Element;
+      if (target.tagName === 'svg' || (target.tagName === 'rect' && !target.getAttribute('rx'))) {
+        setSelectedStandaloneLabel(null);
       }
     }
   };
@@ -627,8 +685,118 @@ export function RoadEditor({ roads: initialRoads, onClose, onExport }: RoadEdito
   const getSvgCursor = () => {
     if (isPanning) return 'grabbing';
     if (editorMode === 'labelEdit') return 'move';
+    if (editorMode === 'textAdd') return 'text';
     if (selectionMode !== 'none') return 'crosshair';
     return 'default';
+  };
+
+  // Add a new standalone text label
+  const addStandaloneLabel = (position: [number, number]) => {
+    const newLabel: StandaloneLabel = {
+      id: `label-${Date.now()}`,
+      text: newLabelText,
+      position,
+      fontSize: 12,
+      angle: 0,
+      visible: true
+    };
+    
+    const updatedLabels = [...standaloneLabels, newLabel];
+    setStandaloneLabels(updatedLabels);
+    saveLabelToHistory(updatedLabels);
+    setSelectedStandaloneLabel(newLabel.id);
+  };
+  
+  // Update a standalone label
+  const updateStandaloneLabel = (id: string, updates: Partial<StandaloneLabel>) => {
+    const updatedLabels = standaloneLabels.map(label => 
+      label.id === id ? { ...label, ...updates } : label
+    );
+    
+    setStandaloneLabels(updatedLabels);
+    saveLabelToHistory(updatedLabels);
+  };
+  
+  // Delete a standalone label
+  const deleteStandaloneLabel = (id: string) => {
+    const updatedLabels = standaloneLabels.filter(label => label.id !== id);
+    setStandaloneLabels(updatedLabels);
+    saveLabelToHistory(updatedLabels);
+    setSelectedStandaloneLabel(null);
+  };
+  
+  // Toggle visibility of a standalone label
+  const toggleStandaloneLabelVisibility = (id: string) => {
+    const updatedLabels = standaloneLabels.map(label => 
+      label.id === id ? { ...label, visible: !label.visible } : label
+    );
+    
+    setStandaloneLabels(updatedLabels);
+    saveLabelToHistory(updatedLabels);
+  };
+
+  // State for dragging standalone labels
+  const [draggedStandaloneLabel, setDraggedStandaloneLabel] = useState<string | null>(null);
+  
+  // Handle standalone label drag start
+  const handleStandaloneLabelDragStart = (event: React.MouseEvent, labelId: string) => {
+    if (editorMode !== 'labelEdit') return;
+    
+    event.stopPropagation();
+    const [mouseX, mouseY] = getSvgCoordinates(event as unknown as MouseEvent);
+    
+    // Find the label
+    const label = standaloneLabels.find(l => l.id === labelId);
+    if (!label) return;
+    
+    // Set drag offset as difference between mouse position and label position
+    setDragOffset([
+      mouseX - label.position[0],
+      mouseY - label.position[1]
+    ]);
+    
+    // Set flag to ignore background clicks
+    setIgnoreBackgroundClick(true);
+    
+    setDraggedStandaloneLabel(labelId);
+    setSelectedStandaloneLabel(labelId);
+    setDragStart([mouseX, mouseY]);
+  };
+  
+  // Handle standalone label drag
+  const handleStandaloneLabelDrag = (event: MouseEvent) => {
+    if (!draggedStandaloneLabel) return;
+    
+    event.stopPropagation();
+    const [mouseX, mouseY] = getSvgCoordinates(event);
+    
+    // Find the label
+    const label = standaloneLabels.find(l => l.id === draggedStandaloneLabel);
+    if (!label) return;
+    
+    // Calculate new position
+    const newX = mouseX - dragOffset[0];
+    const newY = mouseY - dragOffset[1];
+    
+    // Update the label position
+    updateStandaloneLabel(draggedStandaloneLabel, {
+      position: [newX, newY]
+    });
+  };
+  
+  // Handle standalone label drag end
+  const handleStandaloneLabelDragEnd = () => {
+    if (!draggedStandaloneLabel) return;
+    
+    // We already update the label in handleStandaloneLabelDrag
+    
+    // Clear drag state
+    setDraggedStandaloneLabel(null);
+    
+    // Reset the background click flag after a short delay
+    setTimeout(() => {
+      setIgnoreBackgroundClick(false);
+    }, 100);
   };
 
   return (
@@ -672,6 +840,16 @@ export function RoadEditor({ roads: initialRoads, onClose, onExport }: RoadEdito
                   >
                     <Move size={16} className="mr-1" />
                     Move Labels
+                  </button>
+                  <button
+                    onClick={() => toggleEditorMode('textAdd')}
+                    className={`px-3 py-1 flex items-center gap-1 ${
+                      editorMode === 'textAdd' ? 'bg-green-100 text-green-600' : 'hover:bg-gray-100'
+                    }`}
+                    title="Add Text Labels"
+                  >
+                    <Type size={16} className="mr-1" />
+                    Add Text
                   </button>
                 </div>
                 
@@ -736,8 +914,23 @@ export function RoadEditor({ roads: initialRoads, onClose, onExport }: RoadEdito
                   </>
                 )}
                 {editorMode === 'labelEdit' && "Click a label to select it. Drag to move, or use controls to resize and rotate."}
+                {editorMode === 'textAdd' && "Click anywhere on the map to add a new text label."}
               </div>
             </div>
+            
+            {/* Text input for new labels - only show in textAdd mode */}
+            {editorMode === 'textAdd' && (
+              <div className="mb-2 flex items-center bg-green-50 p-2 rounded border border-green-200">
+                <label className="text-sm font-medium text-gray-700 mr-2">Label text:</label>
+                <input
+                  type="text"
+                  value={newLabelText}
+                  onChange={(e) => setNewLabelText(e.target.value)}
+                  className="flex-grow px-3 py-1 border rounded"
+                  placeholder="Enter label text"
+                />
+              </div>
+            )}
             
             {/* SVG Preview */}
             <div 
@@ -987,6 +1180,178 @@ export function RoadEditor({ roads: initialRoads, onClose, onExport }: RoadEdito
                   }).filter(Boolean); // Remove nulls for skipped labels
                 })()}
                 
+                {/* Render standalone text labels */}
+                {standaloneLabels.map(label => {
+                  if (!label.visible) return null;
+                  
+                  const isSelected = label.id === selectedStandaloneLabel;
+                  const isDragging = label.id === draggedStandaloneLabel;
+                  
+                  return (
+                    <g key={`standalone-${label.id}`}>
+                      <text
+                        x={label.position[0]}
+                        y={label.position[1]}
+                        fontSize={label.fontSize || 12}
+                        fill="black"
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        transform={`rotate(${label.angle || 0}, ${label.position[0]}, ${label.position[1]})`}
+                        cursor={editorMode === 'labelEdit' ? 'move' : 'default'}
+                        onMouseDown={(e) => handleStandaloneLabelDragStart(e, label.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (editorMode === 'labelEdit') {
+                            setSelectedStandaloneLabel(isSelected ? null : label.id);
+                          }
+                        }}
+                        className={editorMode === 'labelEdit' ? 'hover:text-blue-600' : ''}
+                      >
+                        {label.text}
+                      </text>
+                      
+                      {/* Visual indicator and controls for standalone labels in edit mode */}
+                      {editorMode === 'labelEdit' && (
+                        <>
+                          <rect
+                            x={label.position[0] - 40}
+                            y={label.position[1] - 10}
+                            width="80"
+                            height="20"
+                            fill="transparent"
+                            stroke={isSelected || isDragging ? "green" : "rgba(0,128,0,0.3)"}
+                            strokeWidth={isSelected || isDragging ? "1.5" : "1"}
+                            strokeDasharray={isSelected || isDragging ? "none" : "2 2"}
+                            opacity="0.6"
+                            rx="4"
+                            ry="4"
+                            transform={`rotate(${label.angle || 0}, ${label.position[0]}, ${label.position[1]})`}
+                            cursor="move"
+                            onMouseDown={(e) => handleStandaloneLabelDragStart(e, label.id)}
+                            pointerEvents="all"
+                          />
+                          
+                          {/* Controls that appear when a standalone label is selected */}
+                          {isSelected && (
+                            <g pointerEvents="all">
+                              {/* Font size controls */}
+                              <g 
+                                transform={`translate(${label.position[0] - 60}, ${label.position[1]}) rotate(${label.angle || 0}, 15, 0)`}
+                                cursor="pointer"
+                              >
+                                <circle cx="0" cy="0" r="15" fill="white" stroke="green" strokeWidth="1" />
+                                <g transform="translate(-6, -6)">
+                                  <Type size={12} color="green" />
+                                </g>
+                                <circle 
+                                  cx="0" 
+                                  cy="20" 
+                                  r="10" 
+                                  fill="white" 
+                                  stroke="green" 
+                                  strokeWidth="1" 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    updateStandaloneLabel(label.id, {
+                                      fontSize: Math.max(6, (label.fontSize || 12) - 1)
+                                    });
+                                  }} 
+                                />
+                                <g transform="translate(-4, 16)">
+                                  <ChevronDown size={8} color="green" />
+                                </g>
+                                <circle 
+                                  cx="0" 
+                                  cy="-20" 
+                                  r="10" 
+                                  fill="white" 
+                                  stroke="green" 
+                                  strokeWidth="1" 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    updateStandaloneLabel(label.id, {
+                                      fontSize: Math.min(20, (label.fontSize || 12) + 1)
+                                    });
+                                  }} 
+                                />
+                                <g transform="translate(-4, -24)">
+                                  <ChevronUp size={8} color="green" />
+                                </g>
+                              </g>
+                              
+                              {/* Rotation control */}
+                              <g 
+                                transform={`translate(${label.position[0] + 60}, ${label.position[1]}) rotate(${label.angle || 0}, -15, 0)`}
+                                cursor="pointer"
+                              >
+                                <circle 
+                                  cx="0" 
+                                  cy="0" 
+                                  r="15" 
+                                  fill="white" 
+                                  stroke="green" 
+                                  strokeWidth="1" 
+                                  onMouseDown={(e) => {
+                                    e.stopPropagation();
+                                    const rect = svgRef.current?.getBoundingClientRect();
+                                    if (!rect) return;
+                                    
+                                    document.addEventListener('mousemove', (moveEvent) => {
+                                      const [mouseX, mouseY] = getSvgCoordinates(moveEvent as unknown as MouseEvent);
+                                      const dx = mouseX - label.position[0];
+                                      const dy = mouseY - label.position[1];
+                                      let angle = Math.atan2(dy, dx) * (180 / Math.PI);
+                                      
+                                      // Adjust angle if needed for better readability
+                                      if (angle > 90 || angle < -90) {
+                                        angle += 180;
+                                      }
+                                      
+                                      updateStandaloneLabel(label.id, { angle });
+                                    });
+                                    
+                                    document.addEventListener('mouseup', () => {
+                                      document.removeEventListener('mousemove', () => {});
+                                    }, { once: true });
+                                  }}
+                                />
+                                <g 
+                                  transform="translate(-8, -8)"
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                  <RotateCw size={16} color="green" />
+                                </g>
+                              </g>
+                              
+                              {/* Delete button */}
+                              <g 
+                                transform={`translate(${label.position[0]}, ${label.position[1] + 30})`}
+                                cursor="pointer"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteStandaloneLabel(label.id);
+                                }}
+                              >
+                                <circle 
+                                  cx="0" 
+                                  cy="0" 
+                                  r="15" 
+                                  fill="white" 
+                                  stroke="red" 
+                                  strokeWidth="1" 
+                                />
+                                <g transform="translate(-8, -8)">
+                                  <X size={16} color="red" />
+                                </g>
+                              </g>
+                            </g>
+                          )}
+                        </>
+                      )}
+                    </g>
+                  );
+                })}
+                
                 {/* Selection Rectangle */}
                 {selectionRect && (
                   <rect
@@ -1110,6 +1475,51 @@ export function RoadEditor({ roads: initialRoads, onClose, onExport }: RoadEdito
                     )}
                   </div>
                 ))}
+                
+                {/* Standalone Text Labels Section */}
+                {standaloneLabels.length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="text-sm font-medium text-gray-700 mb-2 flex justify-between items-center">
+                      Text Labels
+                      <button 
+                        onClick={() => toggleEditorMode('textAdd')}
+                        className="text-xs px-2 py-1 bg-green-50 text-green-600 rounded hover:bg-green-100 flex items-center"
+                      >
+                        <PlusCircle size={12} className="mr-1" /> Add Label
+                      </button>
+                    </h3>
+                    <div className="divide-y">
+                      {standaloneLabels.map(label => (
+                        <div
+                          key={label.id}
+                          className="flex items-center py-2 hover:bg-gray-50 rounded"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={label.visible}
+                            onChange={() => toggleStandaloneLabelVisibility(label.id)}
+                            className="w-4 h-4 rounded border-gray-300 mr-3"
+                          />
+                          <div className="flex-grow">
+                            <input
+                              type="text"
+                              value={label.text}
+                              onChange={(e) => updateStandaloneLabel(label.id, { text: e.target.value })}
+                              className="w-full px-2 py-1 border rounded text-sm"
+                            />
+                          </div>
+                          <button
+                            onClick={() => deleteStandaloneLabel(label.id)}
+                            className="ml-2 p-1 text-red-500 hover:bg-red-50 rounded"
+                            title="Delete label"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

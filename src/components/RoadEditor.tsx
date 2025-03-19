@@ -1,6 +1,9 @@
 import React, { useState, useRef, MouseEvent, useEffect } from 'react';
 import { X, Download, Undo, ZoomIn, ZoomOut, RotateCcw, Move, MousePointer, RotateCw, Type, ChevronUp, ChevronDown, PlusCircle } from 'lucide-react';
 
+// Add export format type
+type ExportFormat = 'svg' | 'dxf';
+
 interface Road {
   id: string;
   name: string;
@@ -41,7 +44,7 @@ type EditorMode = 'selection' | 'labelEdit' | 'textAdd';
 interface RoadEditorProps {
   roads: Road[];
   onClose: () => void;
-  onExport: (roads: Road[], standaloneLabels?: StandaloneLabel[]) => void;
+  onExport: (roads: Road[], standaloneLabels?: StandaloneLabel[], format?: ExportFormat) => void;
 }
 
 export function RoadEditor({ roads: initialRoads, onClose, onExport }: RoadEditorProps) {
@@ -258,8 +261,11 @@ export function RoadEditor({ roads: initialRoads, onClose, onExport }: RoadEdito
     }
   };
 
+  // Add export format state
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('svg');
+
   const handleExport = () => {
-    onExport(roads.filter(road => road.visible), standaloneLabels.filter(label => label.visible));
+    onExport(roads.filter(road => road.visible), standaloneLabels.filter(label => label.visible), exportFormat);
   };
 
   // Mouse event handlers for rectangle selection
@@ -1383,12 +1389,25 @@ export function RoadEditor({ roads: initialRoads, onClose, onExport }: RoadEdito
               >
                 <Undo size={16} /> Undo
               </button>
-              <button
-                onClick={handleExport}
-                className="px-3 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center gap-1 ml-auto"
-              >
-                <Download size={16} /> Export
-              </button>
+              
+              {/* Add format selection dropdown */}
+              <div className="ml-auto flex items-center gap-2">
+                <label className="text-sm text-gray-700">Export Format:</label>
+                <select 
+                  value={exportFormat}
+                  onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
+                  className="px-2 py-1 border rounded text-sm"
+                >
+                  <option value="dxf">AutoCAD (DXF)</option>
+                  <option value="svg">SVG</option>
+                </select>
+                <button
+                  onClick={handleExport}
+                  className="px-3 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center gap-1"
+                >
+                  <Download size={16} /> Export
+                </button>
+              </div>
             </div>
             
             <div className="px-4 py-2 bg-gray-50 text-sm text-gray-500">

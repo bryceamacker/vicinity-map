@@ -20,6 +20,9 @@ interface StandaloneLabel {
   visible: boolean;
 }
 
+// Add export format type
+type ExportFormat = 'svg' | 'dxf';
+
 let DefaultIcon = L.icon({
   iconUrl: icon,
   shadowUrl: iconShadow,
@@ -59,8 +62,15 @@ function App() {
     }
   };
 
-  const handleFinalExport = (selectedRoads: any[], standaloneLabels: StandaloneLabel[] = []) => {
-    fetchRoadsAndExportSVG(mapRef.current!.getBounds(), selectedRoads, standaloneLabels);
+  const handleFinalExport = (selectedRoads: any[], standaloneLabels: StandaloneLabel[] = [], format: ExportFormat = 'svg') => {
+    if (format === 'svg') {
+      fetchRoadsAndExportSVG(mapRef.current!.getBounds(), selectedRoads, standaloneLabels);
+    } else if (format === 'dxf') {
+      // We'll implement this in mapUtils.ts
+      import('./utils/dxfExport').then(module => {
+        module.exportToDXF(selectedRoads, standaloneLabels);
+      });
+    }
     setShowEditor(false);
   };
 

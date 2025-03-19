@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tarikjabiri/dxf": "^1.0.0",
+    "@tarikjabiri/dxf": "^2.8.9",
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

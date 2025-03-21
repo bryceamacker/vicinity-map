@@ -50,7 +50,9 @@ type EditorAction =
   | { type: 'SELECT_ALL_ROADS' }
   | { type: 'DESELECT_ALL_ROADS' }
   | { type: 'SELECT_NAMED_ROADS_ONLY' }
-  | { type: 'TOGGLE_ALL_ROAD_NAMES'; payload: boolean };
+  | { type: 'TOGGLE_ALL_ROAD_NAMES'; payload: boolean }
+  | { type: 'TOGGLE_ROAD_TYPE_VISIBILITY'; payload: { roadType: string; visible: boolean } }
+  | { type: 'TOGGLE_FEATURE_TYPE_VISIBILITY'; payload: { featureType: string; visible: boolean } };
 
 // Reducer function
 function editorReducer(state: EditorState, action: EditorAction): EditorState {
@@ -227,6 +229,26 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
       return {
         ...state,
         roads: state.roads.map(road => ({ ...road, showName: action.payload })),
+      };
+    
+    case 'TOGGLE_ROAD_TYPE_VISIBILITY':
+      return {
+        ...state,
+        roads: state.roads.map(road => 
+          road.type === action.payload.roadType 
+            ? { ...road, visible: action.payload.visible }
+            : road
+        ),
+      };
+    
+    case 'TOGGLE_FEATURE_TYPE_VISIBILITY':
+      return {
+        ...state,
+        roads: state.roads.map(road => 
+          road.featureType === action.payload.featureType 
+            ? { ...road, visible: action.payload.visible }
+            : road
+        ),
       };
     
     default:

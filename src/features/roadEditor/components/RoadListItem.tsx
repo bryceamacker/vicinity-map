@@ -25,6 +25,9 @@ export function RoadListItem({ road, isFiltered = false }: RoadListItemProps) {
     dispatch({ type: 'SAVE_TO_HISTORY', payload: [] }); // This will be filled by the reducer
   };
   
+  // Get display name for the road
+  const roadDisplayName = road.name || `Unnamed ${road.originalType || 'Road'}`;
+  
   return (
     <div className={`flex items-center p-2 hover:bg-gray-50 rounded-lg ${isFiltered ? 'opacity-50' : ''}`}>
       <input
@@ -37,7 +40,7 @@ export function RoadListItem({ road, isFiltered = false }: RoadListItemProps) {
         className={`flex-grow cursor-pointer ${road.visible ? 'text-black' : 'text-gray-400'}`}
         onClick={toggleRoad}
       >
-        {road.name || `Unnamed ${road.type || 'Road'}`}
+        {roadDisplayName}
       </span>
       {road.name && road.visible && (
         <div className="flex items-center pl-2">

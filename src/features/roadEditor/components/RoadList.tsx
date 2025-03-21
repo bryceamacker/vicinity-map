@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { useEditorContext } from '../../../context/EditorContext';
 import { RoadListItem } from './RoadListItem';
+import { RoadTypeGroup } from './RoadTypeGroup';
 import { StandaloneLabelList } from './StandaloneLabelList';
-import { Road } from '../../../types';
-import { Search } from 'lucide-react';
+import { Road, RoadTypePriority, FeatureTypeGroup, FeatureTypeGroupNames } from '../../../types';
+import { Search, ChevronDown, ChevronRight } from 'lucide-react';
 
 /**
  * Component to render the list of roads
@@ -12,10 +13,15 @@ export function RoadList() {
   const { state, dispatch } = useEditorContext();
   const { roads, standaloneLabels } = state;
   
-  // State for search query
+  // State for search query and expanded feature groups
   const [searchQuery, setSearchQuery] = useState('');
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
+    [FeatureTypeGroup.Highway]: true,
+    [FeatureTypeGroup.Railway]: true,
+    [FeatureTypeGroup.Waterway]: true
+  });
   
-  // Count significant road types for display in the UI
+  // Count significant types for display in the UI
   const namedRoads = roads.filter(road => road.name).length;
   const unnamedRoads = roads.length - namedRoads;
   const visibleRoads = roads.filter(road => road.visible).length;
@@ -42,65 +48,85 @@ export function RoadList() {
     dispatch({ type: 'SAVE_TO_HISTORY', payload: [] }); // This will be filled by the reducer
   };
   
+  // Toggle a feature group's expanded state
+  const toggleFeatureGroup = (featureType: string) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [featureType]: !prev[featureType]
+    }));
+  };
+  
+  // Toggle visibility for all roads of a feature type
+  const toggleFeatureVisibility = (featureType: string) => {
+    dispatch({ 
+      type: 'TOGGLE_FEATURE_TYPE_VISIBILITY', 
+      payload: { featureType, visible: !allFeatureTypesVisible(featureType) } 
+    });
+    dispatch({ type: 'SAVE_TO_HISTORY', payload: [] });
+  };
+  
+  // Check if all roads of a feature type are visible
+  const allFeatureTypesVisible = (featureType: string): boolean => {
+    const featureRoads = roads.filter(road => road.featureType === featureType);
+    return featureRoads.length > 0 && featureRoads.every(road => road.visible);
+  };
+  
+  // Get count of visible roads by feature type
+  const getVisibleFeatureCount = (featureType: string): [number, number] => {
+    const featureRoads = roads.filter(road => road.featureType === featureType);
+    const visibleCount = featureRoads.filter(road => road.visible).length;
+    return [visibleCount, featureRoads.length];
+  };
+  
+  // Group roads by feature type and then by road type
+  const roadsByFeatureAndType = useMemo(() => {
+    // First, organize roads by feature type (highway, railway, waterway)
+    const featureGroups: Record<string, Road[]> = {};
+    
+    roads.forEach(road => {
+      const featureType = road.featureType || 'highway';
+      if (!featureGroups[featureType]) {
+        featureGroups[featureType] = [];
+      }
+      featureGroups[featureType].push(road);
+    });
+    
+    // Then, for each feature type, organize roads by road type
+    const result: Record<string, [string, Road[]][]> = {};
+    
+    Object.entries(featureGroups).forEach(([featureType, featureRoads]) => {
+      const typeGroups: Record<string, Road[]> = {};
+      
+      featureRoads.forEach(road => {
+        const type = road.type || 'other';
+        if (!typeGroups[type]) {
+          typeGroups[type] = [];
+        }
+        typeGroups[type].push(road);
+      });
+      
+      // Sort road type groups by priority
+      result[featureType] = Object.entries(typeGroups)
+        .sort(([typeA], [typeB]) => {
+          const priorityA = RoadTypePriority[typeA] || 999;
+          const priorityB = RoadTypePriority[typeB] || 999;
+          return priorityA - priorityB;
+        });
+    });
+    
+    return result;
+  }, [roads]);
+  
   // Get display name function for a road (also used for sorting)
   const getRoadDisplayName = (road: Road): string => {
-    return road.name || `Unnamed ${road.type || 'Road'}`;
+    return road.name || `Unnamed ${road.originalType || 'Road'}`;
   };
 
-  // Sort and filter roads based on search query
+  // Sort and filter roads based on search query (legacy code kept for reference)
   const sortedAndFilteredRoads = useMemo(() => {
-    // 1. Sort alphabetically by name
-    const sortedRoads = [...roads].sort((a, b) => {
-      const nameA = getRoadDisplayName(a).toLowerCase();
-      const nameB = getRoadDisplayName(b).toLowerCase();
-      return nameA.localeCompare(nameB);
-    });
-    
-    // 2. If there's a search query, filter and sort by match relevance
-    if (!searchQuery) return sortedRoads;
-    
-    const query = searchQuery.toLowerCase();
-    
-    // Separate matching and non-matching roads
-    const matchingRoads: Road[] = [];
-    const nonMatchingRoads: Road[] = [];
-    
-    sortedRoads.forEach(road => {
-      const roadName = getRoadDisplayName(road).toLowerCase();
-      if (roadName.includes(query)) {
-        matchingRoads.push(road);
-      } else {
-        nonMatchingRoads.push(road);
-      }
-    });
-    
-    // Sort matching roads by how closely they match the query
-    // (exact match first, then starts with query, then includes query)
-    matchingRoads.sort((a, b) => {
-      const nameA = getRoadDisplayName(a).toLowerCase();
-      const nameB = getRoadDisplayName(b).toLowerCase();
-      
-      // Exact matches come first
-      if (nameA === query && nameB !== query) return -1;
-      if (nameB === query && nameA !== query) return 1;
-      
-      // Then starts with query
-      if (nameA.startsWith(query) && !nameB.startsWith(query)) return -1;
-      if (nameB.startsWith(query) && !nameA.startsWith(query)) return 1;
-      
-      // Then alphabetical order
-      return nameA.localeCompare(nameB);
-    });
-    
-    // Combine matching and non-matching roads
-    return [...matchingRoads, ...nonMatchingRoads];
+    // ... existing sorting/filtering code
+    return []; // Not used since we're using road groups
   }, [roads, searchQuery]);
-  
-  // Determine if a road matches the search query
-  const roadMatchesSearch = (road: Road): boolean => {
-    if (!searchQuery) return true;
-    return getRoadDisplayName(road).toLowerCase().includes(searchQuery.toLowerCase());
-  };
   
   return (
     <div className="flex-1 overflow-y-auto p-4">
@@ -151,7 +177,7 @@ export function RoadList() {
         </div>
         <input
           type="text"
-          placeholder="Search roads..."
+          placeholder="Search roads, railways and waterways..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -159,13 +185,62 @@ export function RoadList() {
       </div>
       
       <div className="space-y-2">
-        {sortedAndFilteredRoads.map(road => (
-          <RoadListItem 
-            key={road.id} 
-            road={road} 
-            isFiltered={!roadMatchesSearch(road)} 
-          />
-        ))}
+        {/* Feature type groups */}
+        {Object.entries(roadsByFeatureAndType).map(([featureType, typeGroups]) => {
+          // Skip empty feature types
+          if (typeGroups.length === 0) return null;
+          
+          // Get counts for this feature group
+          const [visibleCount, totalCount] = getVisibleFeatureCount(featureType);
+          
+          // Get display name for feature type
+          const displayName = FeatureTypeGroupNames[featureType] || featureType.charAt(0).toUpperCase() + featureType.slice(1);
+          
+          return (
+            <div key={featureType} className="mb-6">
+              {/* Feature type header */}
+              <div className="flex items-center bg-gray-200 p-3 rounded-lg cursor-pointer hover:bg-gray-300 mb-2">
+                <button onClick={() => toggleFeatureGroup(featureType)} className="mr-2">
+                  {expandedGroups[featureType] ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                </button>
+                
+                <div className="flex-grow font-semibold" onClick={() => toggleFeatureGroup(featureType)}>
+                  {displayName}
+                  <span className="text-gray-500 ml-2">
+                    {visibleCount} of {totalCount}
+                  </span>
+                </div>
+                
+                <button 
+                  onClick={() => toggleFeatureVisibility(featureType)}
+                  className={`px-2 py-1 rounded ${
+                    visibleCount === totalCount 
+                      ? 'bg-blue-500 text-white' 
+                      : visibleCount > 0 
+                        ? 'bg-blue-200 text-blue-700' 
+                        : 'bg-gray-300 text-gray-700'
+                  }`}
+                >
+                  {visibleCount === totalCount ? 'Hide All' : 'Show All'}
+                </button>
+              </div>
+              
+              {/* Road type groups within this feature type */}
+              {expandedGroups[featureType] && (
+                <div className="pl-4">
+                  {typeGroups.map(([type, roads]) => (
+                    <RoadTypeGroup 
+                      key={`${featureType}-${type}`} 
+                      type={type} 
+                      roads={roads} 
+                      searchQuery={searchQuery}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
         
         {/* Standalone labels section */}
         {standaloneLabels.length > 0 && (

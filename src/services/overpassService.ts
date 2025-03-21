@@ -1,7 +1,7 @@
 import L from 'leaflet';
 import { Road } from '../types';
 import { transformToSVGCoords } from '../utils/coordinateTransforms';
-import { isSignificantRoad } from '../utils/roadUtils';
+import { isSignificantRoad, categorizeRoadType } from '../utils/roadUtils';
 
 /**
  * Fetches road data from OpenStreetMap via Overpass API
@@ -11,6 +11,10 @@ export async function fetchRoadData(bounds: L.LatLngBounds): Promise<Road[]> {
     [out:json][timeout:25];
     (
       way["highway"]
+        (${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()});
+      way["railway"]
+        (${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()});
+      way["waterway"]
         (${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()});
     );
     out body;
@@ -52,8 +56,11 @@ function processOverpassResponse(data: any, bounds: L.LatLngBounds): Road[] {
     .filter((element: any) => {
       return element.type === 'way' && 
              element.tags && 
-             element.tags.highway && 
-             isSignificantRoad(element.tags);
+             (
+               (element.tags.highway && isSignificantRoad(element.tags)) ||
+               element.tags.railway ||
+               element.tags.waterway
+             );
     })
     .map((way: any) => {
       const points = way.nodes.map((nodeId: number) => nodes.get(nodeId));
@@ -63,10 +70,32 @@ function processOverpassResponse(data: any, bounds: L.LatLngBounds): Road[] {
         transformToSVGCoords(p, bounds)
       );
       
+      // Determine feature type (highway, railway, or waterway)
+      let featureType = 'other';
+      let originalType = '';
+      
+      if (way.tags.highway) {
+        featureType = 'highway';
+        originalType = way.tags.highway;
+      } else if (way.tags.railway) {
+        featureType = 'railway';
+        originalType = way.tags.railway;
+      } else if (way.tags.waterway) {
+        featureType = 'waterway';
+        originalType = way.tags.waterway;
+      }
+      
+      // Get the OSM type and categorize it
+      const categoryType = featureType === 'highway' 
+        ? categorizeRoadType(originalType)
+        : categorizeFeatureType(featureType, originalType);
+      
       return {
         id: way.id.toString(),
         name: way.tags.name || '',
-        type: way.tags.highway || '',
+        type: categoryType, // Use our categorized type
+        originalType: originalType, // Store the original OSM type for reference
+        featureType: featureType, // Store whether this is a highway, railway, or waterway
         visible: true,
         showName: true,
         points: points,
@@ -75,4 +104,27 @@ function processOverpassResponse(data: any, bounds: L.LatLngBounds): Road[] {
     });
 
   return roads;
+}
+
+/**
+ * Categorizes non-highway features like railways and waterways
+ */
+function categorizeFeatureType(featureType: string, originalType: string): string {
+  if (featureType === 'railway') {
+    // Categorize railway types
+    if (['rail', 'light_rail', 'subway', 'tram'].includes(originalType)) {
+      return 'railway_major';
+    }
+    return 'railway_minor';
+  }
+  
+  if (featureType === 'waterway') {
+    // Categorize waterway types
+    if (['river', 'canal'].includes(originalType)) {
+      return 'waterway_major';
+    }
+    return 'waterway_minor';
+  }
+  
+  return 'other';
 } 

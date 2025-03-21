@@ -18,12 +18,20 @@ export const exportToDXF = (
     // Create a new DXF document
     const dxf = new DxfWriter();
     
-    // Set up the document with better color choices
-    // Color 7 is white/black (depending on background)
-    // Color 0 is white/black by block
+    // Set up the document
     dxf.setVariable('$INSUNITS', 1); // Inches
-    dxf.addLayer('Roads', 7); // Use white/black for roads (more readable)
-    dxf.addLayer('Labels', 7); // Use white/black for labels (more readable)
+    
+    // Add a custom railroad line pattern to the tables section
+    // (Note: The actual method might differ, we'll make our railways visually distinct
+    // by using different colors and line widths instead)
+    
+    // Add layers with appropriate colors
+    // Color numbers in DXF:
+    // 1=Red, 2=Yellow, 3=Green, 4=Cyan, 5=Blue, 6=Magenta, 7=White/Black, 8=Gray
+    dxf.addLayer('Roads', 7); // White/Black for roads
+    dxf.addLayer('Railways', 4); // Cyan color for railways - more distinct
+    dxf.addLayer('Waterways', 5); // Blue color for waterways
+    dxf.addLayer('Labels', 7); // White/Black for labels
     
     // Find the bounding box of all coordinates to calculate the center for Y-axis flipping
     let minY = Infinity, maxY = -Infinity;
@@ -41,11 +49,69 @@ export const exportToDXF = (
     // Calculate the Y-axis midpoint for flipping
     const midY = (minY + maxY) / 2;
     
+    // Function to simulate railway tracks by adding parallel offset lines
+    const addRailwaySegment = (p1: number[], p2: number[], layerName: string) => {
+      // Calculate a perpendicular vector for the offset
+      const dx = p2[0] - p1[0];
+      const dy = p2[1] - p1[1];
+      const length = Math.sqrt(dx * dx + dy * dy);
+      
+      if (length < 0.001) return; // Skip extremely short segments
+      
+      // Normalize and get perpendicular
+      const offsetX = (dy / length) * 2; // 2 units perpendicular offset
+      const offsetY = -(dx / length) * 2;
+      
+      // Create two parallel lines to simulate railway tracks
+      // First rail
+      dxf.addLine(
+        new point3d(p1[0] + offsetX, p1[1] + offsetY, 0),
+        new point3d(p2[0] + offsetX, p2[1] + offsetY, 0),
+        { layerName }
+      );
+      
+      // Second rail
+      dxf.addLine(
+        new point3d(p1[0] - offsetX, p1[1] - offsetY, 0),
+        new point3d(p2[0] - offsetX, p2[1] - offsetY, 0),
+        { layerName }
+      );
+      
+      // Add cross ties at regular intervals
+      const numTies = Math.floor(length / 15); // One tie every 15 units
+      if (numTies > 0) {
+        const step = length / numTies;
+        for (let i = 0; i <= numTies; i++) {
+          // Position along the track
+          const t = i / numTies;
+          const tieX = p1[0] + t * dx;
+          const tieY = p1[1] + t * dy;
+          
+          // Add a short line perpendicular to the track to represent a tie
+          dxf.addLine(
+            new point3d(tieX + offsetX * 1.2, tieY + offsetY * 1.2, 0),
+            new point3d(tieX - offsetX * 1.2, tieY - offsetY * 1.2, 0),
+            { layerName }
+          );
+        }
+      }
+    };
+    
     // Add all visible roads with flipped Y coordinates
     roads.forEach(road => {
       if (!road.visible || !road.svgPoints || road.svgPoints.length < 2) return;
       
-      // Add each segment as a line with flipped Y coordinates
+      // Determine which layer to use based on feature type
+      const featureType = road.featureType || 'highway';
+      let layerName = 'Roads';
+      
+      if (featureType === 'railway') {
+        layerName = 'Railways';
+      } else if (featureType === 'waterway') {
+        layerName = 'Waterways';
+      }
+      
+      // Add each segment
       for (let i = 0; i < road.svgPoints.length - 1; i++) {
         const p1 = road.svgPoints[i];
         const p2 = road.svgPoints[i + 1];
@@ -61,11 +127,17 @@ export const exportToDXF = (
           2 * midY - p2[1]
         ];
         
-        const line = dxf.addLine(
-          new point3d(p1Flipped[0], p1Flipped[1], 0),
-          new point3d(p2Flipped[0], p2Flipped[1], 0),
-          { layerName: 'Roads' }
-        );
+        if (featureType === 'railway') {
+          // Use our custom function to draw railway tracks
+          addRailwaySegment(p1Flipped, p2Flipped, layerName);
+        } else {
+          // Regular line for roads and waterways
+          dxf.addLine(
+            new point3d(p1Flipped[0], p1Flipped[1], 0),
+            new point3d(p2Flipped[0], p2Flipped[1], 0),
+            { layerName }
+          );
+        }
       }
     });
     

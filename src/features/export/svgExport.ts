@@ -3,6 +3,33 @@ import { getCalculatedAngle } from '../../utils/roadUtils';
 import { SVG_WIDTH, SVG_HEIGHT } from '../../context/EditorContext';
 
 /**
+ * Get style attributes for a road based on its feature type
+ */
+function getRoadStyle(road: Road): { stroke: string; strokeWidth: string; strokeDasharray?: string } {
+  const featureType = road.featureType || 'highway';
+  
+  switch (featureType) {
+    case 'railway':
+      return { 
+        stroke: '#555', 
+        strokeWidth: '1.5', 
+        strokeDasharray: '5,3' 
+      };
+    case 'waterway':
+      return { 
+        stroke: '#2B7CE9', 
+        strokeWidth: '1.8'
+      };
+    case 'highway':
+    default:
+      return { 
+        stroke: 'black', 
+        strokeWidth: '1.5' 
+      };
+  }
+}
+
+/**
  * Creates and downloads an SVG file from road and label data
  */
 export function exportToSVG(roads: Road[], standaloneLabels: StandaloneLabel[] = []) {
@@ -29,8 +56,15 @@ export function exportToSVG(roads: Road[], standaloneLabels: StandaloneLabel[] =
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       const d = `M ${points.map((p: number[]) => p.join(',')).join(' L ')}`;
       path.setAttribute('d', d);
-      path.setAttribute('stroke', 'black');
-      path.setAttribute('stroke-width', '1.5');
+      
+      // Get style based on feature type
+      const style = getRoadStyle(road);
+      path.setAttribute('stroke', style.stroke);
+      path.setAttribute('stroke-width', style.strokeWidth);
+      if (style.strokeDasharray) {
+        path.setAttribute('stroke-dasharray', style.strokeDasharray);
+      }
+      
       path.setAttribute('fill', 'none');
       svg.appendChild(path);
     });

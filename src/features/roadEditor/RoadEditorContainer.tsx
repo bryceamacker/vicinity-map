@@ -6,12 +6,14 @@ import { useEditorContext } from '../../context/EditorContext';
 import { useMapInteraction } from '../../hooks/useMapInteraction';
 import { useRectangleSelection } from '../../hooks/useRectangleSelection';
 import { useLabelEditing } from '../../hooks/useLabelEditing';
-import { RoadList } from '../../components/editor/RoadList';
-import { ExportPanel } from '../../features/export/components/ExportPanel';
-import { EditorToolbar } from '../../components/editor/EditorToolbar';
-import { NewLabelInput } from '../../features/export/components/NewLabelInput';
-import { RoadPaths } from '../../components/editor/RoadPaths';
-import { SelectionRectangle } from '../../components/editor/SelectionRectangle';
+import { RoadList } from './components/RoadList';
+import { ExportPanel } from '../export/components/ExportPanel';
+import { EditorToolbar } from './components/EditorToolbar';
+import { NewLabelInput } from '../export/components/NewLabelInput';
+import { RoadPaths } from './components/RoadPaths';
+import { RoadLabels } from './components/RoadLabels';
+import { StandaloneLabelsRenderer } from './components/StandaloneLabelsRenderer';
+import { SelectionRectangle } from './components/SelectionRectangle';
 
 interface RoadEditorContainerProps {
   roads: Road[];
@@ -218,8 +220,11 @@ function RoadEditorContent({ onClose, onExport }: Omit<RoadEditorContainerProps,
                 {/* Draw roads */}
                 <RoadPaths roads={state.roads} />
                 
-                {/* Draw road labels and standalone labels would go here */}
-                {/* This is more complex and would be extracted to dedicated components */}
+                {/* Draw road labels */}
+                <RoadLabels roads={state.roads} />
+                
+                {/* Draw standalone labels */}
+                <StandaloneLabelsRenderer labels={state.standaloneLabels} />
                 
                 {/* Selection rectangle */}
                 {selectionRect && (

@@ -1,27 +1,18 @@
 import React, { useState, useRef } from 'react';
 import { MapContainer, TileLayer } from 'react-leaflet';
 import L from 'leaflet';
-import { fetchRoadsAndExportSVG, processRoads } from './utils/mapUtils';
 import { Search, Download } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
-import { RoadEditor } from './components/RoadEditor';
+import { RoadEditorContainer } from './features/roadEditor/RoadEditorContainer';
+import { fetchRoadData } from './services/overpassService';
+import { exportToSVG } from './features/export/svgExport';
+import { exportToDXF } from './features/export/dxfExport';
+import { DxfPreviewContainer } from './features/dxfPreview/DxfPreviewContainer';
+import { Road, StandaloneLabel, ExportFormat } from './types';
 
 // Fix for Leaflet icons
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
-
-// Define type for standalone labels
-interface StandaloneLabel {
-  id: string;
-  text: string;
-  position: [number, number];
-  fontSize?: number;
-  angle?: number;
-  visible: boolean;
-}
-
-// Add export format type
-type ExportFormat = 'svg' | 'dxf';
 
 let DefaultIcon = L.icon({
   iconUrl: icon,
@@ -33,9 +24,18 @@ L.Marker.prototype.options.icon = DefaultIcon;
 
 function App() {
   const [address, setAddress] = useState('');
+  const [locationName, setLocationName] = useState('');
   const [showEditor, setShowEditor] = useState(false);
-  const [roads, setRoads] = useState<any[]>([]);
+  const [roads, setRoads] = useState<Road[]>([]);
+  const [dxfPreviewData, setDxfPreviewData] = useState<string | null>(null);
+  const [cachedExportData, setCachedExportData] = useState<{
+    roads: Road[],
+    standaloneLabels: StandaloneLabel[]
+  } | null>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleSearch = async () => {
     try {
@@ -53,25 +53,62 @@ function App() {
     }
   };
 
-  const handleExport = async () => {
-    if (mapRef.current) {
+  const handleFetchRoads = async () => {
+    if (!mapRef.current) return;
+    try {
+      setIsLoading(true);
+      setLoadingMessage('Fetching road data...');
+      
       const bounds = mapRef.current.getBounds();
-      const roadsData = await processRoads(bounds);
+      const roadsData = await fetchRoadData(bounds);
+      
       setRoads(roadsData);
       setShowEditor(true);
+    } catch (error) {
+      console.error('Error fetching roads:', error);
+      setErrorMessage('Failed to fetch road data. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
-
-  const handleFinalExport = (selectedRoads: any[], standaloneLabels: StandaloneLabel[] = [], format: ExportFormat = 'svg') => {
+  
+  const handleQuickExport = () => {
+    if (!mapRef.current) return;
+    
+    // Quick export uses selected roads directly
+    const selectedRoads = roads.filter(road => road.visible);
+    const standaloneLabels: StandaloneLabel[] = []; // No standalone labels in quick export
+    exportToSVG(selectedRoads, standaloneLabels);
+  };
+  
+  const handleFinalExport = (exportRoads: Road[], standaloneLabels: StandaloneLabel[], format: ExportFormat) => {
+    // Cache the exported data for later use (like re-download)
+    setCachedExportData({
+      roads: exportRoads,
+      standaloneLabels
+    });
+    
     if (format === 'svg') {
-      fetchRoadsAndExportSVG(mapRef.current!.getBounds(), selectedRoads, standaloneLabels);
+      // SVG export still just downloads directly
+      exportToSVG(exportRoads, standaloneLabels);
     } else if (format === 'dxf') {
-      // We'll implement this in mapUtils.ts
-      import('./utils/dxfExport').then(module => {
-        module.exportToDXF(selectedRoads, standaloneLabels);
-      });
+      // For DXF, create a preview
+      const dxfString = exportToDXF(exportRoads, standaloneLabels, { skipDownload: true });
+      if (dxfString) {
+        setDxfPreviewData(dxfString);
+      }
     }
-    setShowEditor(false);
+  };
+  
+  const handleCloseDxfPreview = () => {
+    setDxfPreviewData(null);
+    // Reset cached data when closing
+    setCachedExportData(null);
+  };
+  
+  const handleBackToEdit = () => {
+    setDxfPreviewData(null);
+    // Keep the cached data for when the user exports again
   };
 
   return (
@@ -95,7 +132,7 @@ function App() {
               <Search size={20} /> Search
             </button>
             <button
-              onClick={handleExport}
+              onClick={handleFetchRoads}
               className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center gap-2"
             >
               <Download size={20} /> Export
@@ -121,11 +158,21 @@ function App() {
         </div>
       </div>
 
-      {showEditor && (
-        <RoadEditor
+      {showEditor && !dxfPreviewData && (
+        <RoadEditorContainer
           roads={roads}
           onClose={() => setShowEditor(false)}
           onExport={handleFinalExport}
+        />
+      )}
+      
+      {dxfPreviewData && cachedExportData && (
+        <DxfPreviewContainer
+          dxfData={dxfPreviewData}
+          onClose={handleCloseDxfPreview}
+          onBackToEdit={handleBackToEdit}
+          roads={cachedExportData.roads}
+          standaloneLabels={cachedExportData.standaloneLabels}
         />
       )}
     </div>

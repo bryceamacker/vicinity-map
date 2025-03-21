@@ -1,5 +1,5 @@
 import React from 'react';
-import { Road } from '../../types';
+import { Road } from '../../../types';
 
 interface RoadPathsProps {
   roads: Road[];

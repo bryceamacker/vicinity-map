@@ -1,5 +1,5 @@
 import React from 'react';
-import { SelectionRect, SelectionMode } from '../../types';
+import { SelectionRect, SelectionMode } from '../../../types';
 
 interface SelectionRectangleProps {
   rect: SelectionRect;

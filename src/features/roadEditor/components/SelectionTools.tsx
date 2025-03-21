@@ -1,6 +1,6 @@
 import React from 'react';
-import { useEditorContext } from '../../context/EditorContext';
-import { SelectionMode } from '../../types';
+import { useEditorContext } from '../../../context/EditorContext';
+import { SelectionMode } from '../../../types';
 
 interface SelectionToolsProps {
   toggleSelectionMode: (mode: SelectionMode) => void;

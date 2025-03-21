@@ -15,230 +15,183 @@ The Vicinity Map Generator is a web application that allows users to create vect
 
 ## Technical Implementation
 
-### Component Structure
+### Directory Structure
 
-Let's explore the key components and their roles:
+The application follows a feature-based directory structure:
+
+```
+src/
+├── types/                 # Centralized type definitions
+├── context/               # Context-based state management
+├── hooks/                 # Custom hooks for complex logic
+├── utils/                 # Utility functions
+├── services/              # API and data services
+├── features/              # Feature-specific components and logic
+│   ├── roadEditor/        # Road editor feature
+│   │   ├── components/    # Editor-specific components
+│   │   └── RoadEditorContainer.tsx
+│   └── export/            # Export functionality
+│       ├── components/    # Export-related components
+│       ├── dxfExport/     # DXF export functionality
+│       └── svgExport.ts   # SVG export functionality
+└── App.tsx                # Main application component
+```
+
+### Component Architecture
+
+The application follows a component-based architecture with a focus on separation of concerns. Each component has a single responsibility and is organized hierarchically:
 
 #### 1. App Component (`App.tsx`)
 
 The main application container that:
 - Manages the Leaflet map view
 - Provides address search functionality
-- Handles the initial export process
+- Triggers the road data fetching from OpenStreetMap
 - Controls the visibility of the road editor modal
 
 Key features:
 - Uses `MapContainer` from react-leaflet to display the map
 - Implements address search through Nominatim OpenStreetMap API
 - Manages map state through a ref (`mapRef`)
-- Triggers the road processing when "Export" is clicked
-- Handles conditional export to SVG or DXF based on user selection
+- Handles the final export process for SVG and DXF formats
 
-#### 2. Road Editor Component (`RoadEditor.tsx`)
+#### 2. Road Editor Container (`RoadEditorContainer.tsx`)
 
-A modal interface that allows users to:
-- View the roads in the selected area
-- Toggle visibility of individual roads
-- Preview the selection in real-time
-- Choose the export format (SVG or DXF)
-- Export the final selection in the chosen format
+A container component that orchestrates the road editor functionality:
+- Provides a context provider for state management
+- Manages the overall editor layout
+- Coordinates interactions between child components
 
 Key features:
-- Maintains a list of roads with visibility states
-- Implements undo functionality with a history stack
-- Provides a live preview of the selected roads
-- Offers format selection between SVG and AutoCAD DXF
-- Handles the final export process
+- Wraps the editor content with the `EditorProvider` for context-based state
+- Handles logic for combined mouse events (pan, select, drag)
+- Coordinates the export process
 
-#### 3. Map Utilities (`mapUtils.ts`)
+#### 3. Road Editor Components
 
-Contains utility functions for:
-- Fetching road data from OpenStreetMap via Overpass API
-- Processing geographic data into usable road objects
-- Generating and downloading SVG files
+The road editor is composed of multiple specialized components:
 
-#### 4. DXF Export Utilities (`dxfExport.ts`)
+##### UI Components
+- `RoadList`: Displays the list of roads with checkboxes
+- `RoadListItem`: Individual road item with toggle controls
+- `StandaloneLabelList`: List of standalone text labels
+- `EditorToolbar`: Contains editor tools and controls
+- `EditorModeSelector`: UI for switching between editor modes
+- `SelectionTools`: Tools for rectangle selection
+- `ZoomControls`: Zoom in/out and reset buttons
+- `ExportPanel`: Format selection and export button
+- `NewLabelInput`: Input for adding new text labels
 
-Contains utility functions for:
-- Converting road and label data to AutoCAD-compatible DXF format
-- Organizing entities into appropriate layers (Roads and Labels)
-- Generating and downloading DXF files
+##### Rendering Components
+- `RoadPaths`: Renders the SVG paths for roads
+- `RoadLabels`: Renders the text labels for road names
+- `StandaloneLabelsRenderer`: Renders standalone text labels
+- `SelectionRectangle`: Renders the selection rectangle
 
-### Data Flow and Processing
+### State Management
 
-#### 1. Road Data Acquisition
+The application uses React Context for state management:
 
-When the user clicks "Export" in the main view:
-1. The application captures the current map bounds using `mapRef.current.getBounds()`
-2. It calls `processRoads(bounds)` which:
-   - Constructs an Overpass API query for highways within the bounds
-   - Fetches road and node data from OpenStreetMap
-   - Processes the response into a structured format with:
-     - Road IDs
-     - Road names
-     - Visibility flags
-     - Coordinate points for each road
+#### `EditorContext.tsx`
 
-#### 2. Road Selection Interface
+Provides a centralized state for the editor:
+- Road data and visibility state
+- Standalone labels
+- Editor mode (selection, label editing, text adding)
+- Selection mode (select, deselect, none)
+- History for undo functionality
+- Zoom and pan state
+- Selected labels and dragging state
 
-The RoadEditor component:
-1. Receives the processed road data
-2. Displays each road with a checkbox for selection
-3. Renders a preview SVG showing only the currently selected roads
-4. Maintains a history stack for undo operations
-5. When roads are toggled, it updates both the list and preview
-6. Provides a dropdown to select the export format (SVG or DXF)
+A reducer pattern is used to handle state updates in a predictable way:
+- Each action has a specific type and payload
+- The reducer function processes actions and returns a new state
+- Dispatch function is used to trigger state updates
 
-Key state management:
-```typescript
-const [roads, setRoads] = useState(initialRoads);
-const [history, setHistory] = useState<Road[][]>([initialRoads]);
-const [historyIndex, setHistoryIndex] = useState(0);
-const [exportFormat, setExportFormat] = useState<ExportFormat>('svg');
-```
+### Custom Hooks
 
-#### 3. File Generation and Export
+Custom hooks encapsulate complex logic:
 
-When the user finalizes their selection:
-1. The `handleFinalExport` function in App.tsx is called with the selected roads and format option
-2. Depending on the selected format:
-   
-   For SVG export:
-   - Calls `fetchRoadsAndExportSVG` which:
-     - Creates an SVG document with appropriate viewport settings
-     - Adds a white background rectangle
-     - Draws each selected road as a path
-     - Adds text elements for road names
-     - Serializes the SVG to a string
-     - Creates a downloadable blob
-     - Triggers the download via a temporary anchor element
-   
-   For DXF export:
-   - Dynamically imports and calls `exportToDXF` which:
-     - Creates a new DXF document using the @tarikjabiri/dxf library
-     - Adds each road segment as line entities in a "Roads" layer
-     - Adds road labels as text entities in a "Labels" layer
-     - Adds standalone labels as text entities
-     - Preserves all custom positioning, rotation, and font size settings
-     - Generates the DXF string
-     - Creates a downloadable blob
-     - Triggers the download via a temporary anchor element
+#### `useMapInteraction`
+- Manages zoom and pan functionality
+- Provides viewport calculations
+- Handles mouse wheel events
+- Converts between screen and SVG coordinates
 
-### Technical Implementation Details
+#### `useRectangleSelection`
+- Manages rectangle selection state
+- Handles mouse events for drawing selection rectangles
+- Applies selection to roads that intersect with the rectangle
 
-#### Map Integration
+#### `useLabelEditing`
+- Handles label selection and dragging
+- Manages label rotation and resizing
+- Handles standalone label interactions
 
-The application uses Leaflet for map rendering and interaction:
-- The map is initialized with a default view (London: `[51.505, -0.09]`)
-- TileLayer uses OpenStreetMap tiles
-- A ref (`mapRef`) allows direct access to the map instance for operations like getting bounds and setting views
+### Services
 
-#### Geographic Data Processing
+Services handle API interactions and data processing:
 
-The Overpass API is used to fetch roads:
-```typescript
-const query = `
-  [out:json][timeout:25];
-  (
-    way["highway"]
-      (${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()});
-  );
-  out body;
-  >;
-  out skel qt;
-`;
-```
+#### `overpassService.ts`
+- Fetches road data from OpenStreetMap via Overpass API
+- Processes the response into a structured format
+- Transforms geographic coordinates to SVG coordinates
 
-This query:
-- Requests highways within the specified geographic bounds
-- Retrieves both the roads and their constituent nodes
-- The response is processed to:
-  - Map node IDs to coordinates
-  - Convert ways (roads) to structured objects with coordinates derived from nodes
+### Export Functionality
 
-#### SVG Rendering
+#### SVG Export (`svgExport.ts`)
+- Creates an SVG document with proper viewbox
+- Renders roads as path elements
+- Renders road names and standalone labels as text elements
+- Handles deduplication of road labels
+- Generates and downloads the SVG file
 
-Two levels of SVG rendering occur:
-1. **Preview rendering** - A React-based SVG in the Road Editor:
-   ```jsx
-   <svg width="100%" height="100%" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid meet">
-     {roads.map(road => (
-       road.visible && (
-         <g key={road.id}>
-           <path
-             d={`M ${road.points.map(p => p.join(',')).join(' L ')}`}
-             stroke="black"
-             strokeWidth="1"
-             fill="none"
-           />
-           {/* Road name text elements */}
-         </g>
-       )
-     ))}
-   </svg>
-   ```
+#### DXF Export (`dxfExport/index.ts`)
+- Creates a DXF document using the @tarikjabiri/dxf library
+- Adds roads as line entities in a "Roads" layer
+- Adds road names and standalone labels as text entities in a "Labels" layer
+- Preserves custom positioning, rotation, and font size
+- Generates and downloads the DXF file
 
-2. **Final SVG export** - A programmatically generated SVG using the DOM API:
-   - Creates SVG, path, and text elements
-   - Sets appropriate attributes based on road data
-   - Serializes to a string and creates a downloadable file
+### Utility Functions
 
-#### DXF Generation
+#### `coordinateTransforms.ts`
+- Transforms between geographic coordinates and SVG coordinates
+- Handles scaling and positioning of elements
 
-For AutoCAD-compatible export, the application uses the @tarikjabiri/dxf library:
-1. **DXF document creation**:
-   ```typescript
-   const dxf = new DxfWriter();
-   ```
+#### `roadUtils.ts`
+- Contains utilities for working with road data
+- Provides functions for calculating road angles and label positions
 
-2. **Adding roads as line entities**:
-   ```typescript
-   for (let i = 0; i < points.length - 1; i++) {
-     const p1 = points[i];
-     const p2 = points[i + 1];
-     
-     const line = dxf.addLine(
-       point3d(p1[0], p1[1], 0),
-       point3d(p2[0], p2[1], 0),
-       { layerName: ROAD_LAYER }
-     );
-   }
-   ```
+## Architectural Strengths
 
-3. **Adding text labels**:
-   ```typescript
-   const text = dxf.addText(
-     point3d(labelPos[0], labelPos[1], 0),
-     fontSize,
-     road.name,
-     {
-       rotation: angle,
-       horizontalAlignment: TextHorizontalAlignment.Center,
-       verticalAlignment: TextVerticalAlignment.Middle,
-       layerName: LABEL_LAYER
-     }
-   );
-   ```
+### Separation of Concerns
+- Each component, hook, and utility has a single responsibility
+- Logic is cleanly separated from presentation
+- Features are isolated and self-contained
 
-4. **Exporting the DXF file**:
-   ```typescript
-   const dxfString = dxf.stringify();
-   // Create download with the generated string
-   ```
+### Maintainability
+- Smaller files are easier to understand and modify
+- Changes to one feature don't affect others
+- New features can be added with minimal changes to existing code
 
-## Architectural Strengths and Limitations
+### State Management
+- Centralized state management using context
+- Reducer pattern for predictable state updates
+- State is accessible throughout the component tree
 
-### Strengths:
-- Clear separation of concerns between map viewing, road selection, and file generation
-- Efficient use of OpenStreetMap API to fetch only necessary data
-- Real-time preview of selected roads
-- Multiple export formats (SVG for web/vector graphics and DXF for CAD applications)
-- Undo functionality for selection mistakes
-- Clean user interface with intuitive workflow
-- Support for custom label positioning, rotation, and sizing
-- Layer organization in DXF exports for better CAD workflow
+### Reusability
+- Custom hooks encapsulate complex logic that can be reused
+- Components are designed for reusability
+- Utility functions provide common functionality
 
-### Limitations:
+### Performance
+- Components only re-render when their props or context changes
+- Heavy computations are isolated in specialized components
+- Data fetching is optimized to only retrieve necessary data
+
+## Limitations and Future Improvements
+
 - SVG viewBox is directly using geographic coordinates which may lead to scaling issues
 - Road name positioning is simplistic (middle point of the road)
 - Limited styling options for the exported files

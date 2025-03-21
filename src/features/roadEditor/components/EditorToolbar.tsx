@@ -1,6 +1,6 @@
 import React from 'react';
-import { useEditorContext } from '../../context/EditorContext';
-import { useRectangleSelection } from '../../hooks/useRectangleSelection';
+import { useEditorContext } from '../../../context/EditorContext';
+import { useRectangleSelection } from '../../../hooks/useRectangleSelection';
 import { EditorModeSelector } from './EditorModeSelector';
 import { ZoomControls } from './ZoomControls';
 import { SelectionTools } from './SelectionTools';

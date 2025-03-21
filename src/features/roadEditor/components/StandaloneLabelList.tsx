@@ -1,5 +1,5 @@
 import React from 'react';
-import { useEditorContext } from '../../context/EditorContext';
+import { useEditorContext } from '../../../context/EditorContext';
 import { PlusCircle, X } from 'lucide-react';
 
 /**

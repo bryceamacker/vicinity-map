@@ -1,15 +1,16 @@
 import React from 'react';
-import { Road } from '../../types';
-import { useEditorContext } from '../../context/EditorContext';
+import { Road } from '../../../types';
+import { useEditorContext } from '../../../context/EditorContext';
 
 interface RoadListItemProps {
   road: Road;
+  isFiltered?: boolean;
 }
 
 /**
  * Component to render a single road item in the list
  */
-export function RoadListItem({ road }: RoadListItemProps) {
+export function RoadListItem({ road, isFiltered = false }: RoadListItemProps) {
   const { dispatch } = useEditorContext();
   
   // Toggle road visibility
@@ -25,7 +26,7 @@ export function RoadListItem({ road }: RoadListItemProps) {
   };
   
   return (
-    <div className="flex items-center p-2 hover:bg-gray-50 rounded-lg">
+    <div className={`flex items-center p-2 hover:bg-gray-50 rounded-lg ${isFiltered ? 'opacity-50' : ''}`}>
       <input
         type="checkbox"
         checked={road.visible}

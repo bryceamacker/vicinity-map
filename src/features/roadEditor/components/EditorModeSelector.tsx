@@ -1,7 +1,7 @@
 import React from 'react';
 import { MousePointer, Move, Type } from 'lucide-react';
-import { EditorMode } from '../../types';
-import { useEditorContext } from '../../context/EditorContext';
+import { EditorMode } from '../../../types';
+import { useEditorContext } from '../../../context/EditorContext';
 
 /**
  * Component to render editor mode selection buttons
